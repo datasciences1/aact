@@ -78,3 +78,15 @@ new_DF$has_single_facility <- as.factor(new_DF$has_single_facility)
 new_DF2 <- new_DF[, c("nct_id","study_first_posted_date_type", "study_last_posted_date_type", "overall_status", "name", "has_expanded_access", "has_dmc","has_us_facility","has_single_facility","number_of_arms", "number_of_groups", "why_stopped", "is_fda_regulated_device", "is_unapproved_device", "is_ppsd", "is_us_export", "subjects_affected", "subjects_at_risk","name","frequency_threshold","number_of_facilities","number_of_nsae_subjects","number_of_sae_subjects","overall_status")]
 new_DF2$has_dmc <- new_DF$has_dmc
 new_DF2 <- new_DF2[, c(1,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24)]
+
+new_DF2$outcomes_assessor_masked <- ifelse(new_DF2$outcomes_assessor_masked !="t", "f", "t")
+new_DF2[new_DF2$gender=="",'gender']=NA
+new_DF2$overall_status_1 <- ifelse(new_DF2$overall_status== "Completed", 1, 0)
+new_DF2$last_known_status <- as.character(new_DF2$last_known_status)
+new_DF2[new_DF2$last_known_status =="",'last_known_status']="Not Available"
+new_DF2$last_known_status <- as.factor(new_DF2$last_known_status)
+new_DF2$phase <- as.character(new_DF2$phase)
+new_DF2[new_DF2$phase=="",'phase']="Not Available"
+new_DF2$phase <- as.factor(new_DF2$phase)
+new_DF2[new_DF2$has_expanded_access =="",'has_expanded_access']="f"
+new_DF2[new_DF2$has_dmc  =="",'has_dmc']="f
