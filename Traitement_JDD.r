@@ -89,4 +89,9 @@ new_DF2$phase <- as.character(new_DF2$phase)
 new_DF2[new_DF2$phase=="",'phase']="Not Available"
 new_DF2$phase <- as.factor(new_DF2$phase)
 new_DF2[new_DF2$has_expanded_access =="",'has_expanded_access']="f"
-new_DF2[new_DF2$has_dmc  =="",'has_dmc']="f
+new_DF2[new_DF2$has_dmc  =="",'has_dmc']="f"
+new_DF2$name <- NULL
+new_DF2$gender <- NULL
+new_DF2$number_of_groups <- NULL
+new_DF2$why_stopped <- NULL
+
