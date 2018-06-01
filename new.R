@@ -229,10 +229,14 @@ imp_data <- mice(trialbase2)
 imp_data
 test<-complete (imp_data,1)
 summary(test$enrollment)
-hist(test$enrollment,probability = TRUE)
+boxplot(test$enrollment)# à voir dans les stats descriptives comment regler affichage
+## beaucoup de valeurs hors boxplot (doit on aussi considerer comme val aberrantte? voir avec prof)
 summary (test$minimum_age_num)
+boxplot(test$minimum_age_num)## il faut mettre sous mm unité avant de voir ça
 summary (test$number_of_arms)
+boxplot(test$number_of_arms)
 summary(test$nb_ae)
+boxplot (test$nb_ae)
 table(test$has_dmc,useNA = "always")
 table(test$has_expanded_access,useNA = "always")
 
