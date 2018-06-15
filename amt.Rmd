@@ -1,0 +1,101 @@
+---
+title: "Introduction"
+output: html_document
+---
+
+# Part One
+```{r , echo=FALSE, include=FALSE, cache=FALSE}
+setwd('E:/4. learning/05. STAT/04. DS-Training/0. Project/database/20170811_pipe-delimited-export')
+suppressWarnings(library(sqldf))
+suppressWarnings(library(data.table))
+suppressWarnings(library(readxl))
+suppressWarnings(library(ggplot2))
+
+studies <- fread('studies.txt', header = T)
+trial <- sqldf("select nct_id, substr(start_date,1,4) as year from studies ")
+
+setwd('E:/4. learning/05. STAT/04. DS-Training/0. Project/')
+load('trials1.Rda')
+
+trials1 <- sqldf("select t.*, r.year from trials1 as t left join trial as r on t.nct_id = r.nct_id")
+
+counts <- as.data.frame(table(trials1$year))
+names(counts)[1] <- "year"
+names(counts)[2] <- "Nb_trial"
+
+p0 <- ggplot(data=counts[counts$year!='',], aes(x=year, y=Nb_trial)) + geom_bar(stat="identity") + theme(panel.border = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.text.x = element_text(angle=45))
+
+
+counts <- as.data.frame(table(trials1$year, trials1$phase_r))
+names(counts)[1] <- "year"
+names(counts)[2] <- "phase"
+names(counts)[3] <- "Nb_trial"
+
+p1 <- ggplot(data=counts[counts$year!='',], aes(x=year, y=Nb_trial, fill=phase)) + geom_bar(stat="identity") + theme(panel.border = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.text.x = element_text(angle=45))
+
+
+```
+
+
+Display number of studies over the time
+```{r eval= T, echo=TRUE}
+
+
+p0
+
+```
+
+
+
+Display number of studies per phase over the time
+```{r eval= T, echo=TRUE}
+
+
+p1
+
+```
+
+
+## DATA VISUALIZATION GGVIS
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+#install.packages("RJSONIO")
+#install.packages("googleVis")
+
+suppressPackageStartupMessages(library(plyr))
+suppressPackageStartupMessages(library(RJSONIO))
+suppressPackageStartupMessages(library(googleVis))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(plyr))
+suppressPackageStartupMessages(library(sqldf))
+suppressPackageStartupMessages(library(mice))
+suppressPackageStartupMessages(library(doParallel))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(kernlab))
+
+#save(ACCT_Data,file="ACCT_Data.RData")
+load(file = "ACCT_Data.RData")
+# load(file = "agg_status.RData")
+# load(file = "agg_stud.RData")
+# load(file = "agg_phase.RData")
+# load(file = "Final_data.RData")
+
+MM_ACCT_Data <- gvisMotionChart(ACCT_Data, idvar="country", timevar="year")
+plot(MM_ACCT_Data)
+
+# MM_status <- gvisMotionChart(agg_status, idvar="country", timevar="year")
+# plot(MM_status)
+# 
+# MM_study <- gvisMotionChart(agg_stud, idvar="country", timevar="year")
+# plot(MM_study)
+# 
+# MM_ACCT_Data <- gvisMotionChart(ACCT_Data, idvar="country", timevar="year")
+# plot(MM_ACCT_Data)
+
+```
+  
+  
