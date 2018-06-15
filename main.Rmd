@@ -1,0 +1,20 @@
+---
+title: "Certification Data Scientist - 2018"
+output:
+  html_document: default
+header-includes:
+- \usepackage{bbm, mathrsfs}
+- \usepackage{algorithm2e}
+- \usepackage{amsmath,amsfonts,amssymb}
+---
+
+# First Part
+
+```{r, child = 'code/amt.Rmd'}
+```
+
+# Second Part
+
+```{r, child = 'code/ACCT_Markdown.Rmd'}
+```
+
