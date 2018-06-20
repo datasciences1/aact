@@ -1,0 +1,81 @@
+---
+title: "MODELE R"
+author: "Mohamed"
+date: "20 juin 2018"
+output: html_document
+---
+
+#Chargement Fichier
+
+```{r}
+load(file = 'E:/trials1.Rda')
+summary (trials1)## ici donne un résumé des données 
+### transformer des variables en facteur important
+library(sqldf)
+trials2<-trials1
+
+trials3<-trials2[c(which(trials2$outcome==0),which(trials2$outcome==2),which(trials2$outcome==1)[1:(85812)]),]
+table (trials3$outcome)
+str(trials3)
+```
+
+
+# recodage de la variable outcome pour cart 
+```{r}
+binary <- trials3[ , -which(names(trials3) %in% c("nct_id","has_dmc","has_expanded_access","phase_r","were_results_reported"))]
+#Read data file 
+str(binary)  # num & int
+```
+# Model Logistic Regression 
+```{r}
+library(nnet)
+mymodel <- multinom(outcome~.,data=binary)
+```
+# Confusion Matrix
+```{r}
+p <- predict(mymodel, binary)
+tab <- table(p,binary$outcome )
+tab
+
+sum(diag(tab))/sum(tab)
+1-sum(diag(tab))/sum(tab)
+
+table (binary$outcome)
+```
+#Model Performance
+```{r}
+library(ROCR)
+pred <- predict(mymodel, binary, type='prob')
+head(pred)
+hist(pred)
+pred <- prediction(pred, binary$outcome)
+eval <- performance(pred,"acc")
+plot(eval)
+
+abline(h=0.71, v=0.45)
+```
+#Identity Best Values
+```{r}
+max <- which.max(slot(eval, "y.values")[[1]])
+eval 
+acc <- slot(eval, "y.values")[[1]][max]
+acc 
+cut <- slot(eval, "x.values")[[1]][max]
+cut
+print(c(Accuracy=acc, Cutoff=cut))
+tab
+```
+#Reciever Operating Charateristic (ROC) & Area Under Curve (AUC) 
+```{r}roc <- performance(pred,"tpr", "fpr") # True Positive Rate / False Positive Rate
+plot(roc, 
+     colorize=T, 
+     main="ROC Curve",
+     ylab="Sensitivity",
+     xlab="1-Specificity")
+abline(a=0, b=1)
+```
+#Area Under Curve (AUC)
+auc <- performance(pred,"auc")
+auc <- unlist(slot(auc, "y.values"))
+auc <- round(auc, 4)
+legend(.6, .2, auc, title = "AUC", cex=1.2)
