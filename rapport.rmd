@@ -1,0 +1,449 @@
+---
+title: "Certificat data scientist"
+author: "Ali,Mohamed,Mouna"
+date: "19 juin 2018"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+## Definition des options globales
+knitr::opts_chunk$set(include=TRUE, echo=FALSE,comment = "",fig.align = 'center',fig.width=9, fig.height=6,message=FALSE)
+#warning=FALSE
+
+```
+## Analyse des données 
+## 1- Corrélation
+
+```{r, include=FALSE}
+## appel de tous les packages nécessaires
+library(sqldf)
+library(corrplot)
+library(caret)
+library(parallel)
+library(doParallel)
+library(foreach)
+library(rpart.plot)
+library(pROC)
+library(randomForest)
+library(xgboost)
+library(e1071)
+library(reshape2)
+library(ggplot2)
+
+## Importation des données 
+load(file = 'C:/Users/Mouna/Desktop/20180314_pipe-delimited-export/code-données/trials1.Rda')
+##install.packages("corrplot")
+source("http://www.sthda.com/upload/rquery_cormat.r")
+```
+
+```{r,}
+mydata<-trials1[, c(2,4,6,7,8,9,15,16,17)]
+#str(mydata)
+#rquery.cormat(mydata, type="full")
+rquery.cormat(mydata, type="flatten", graph=FALSE)
+
+
+```
+
+## 
+
+On voit ici que nos variables quantitatives ne sont pas corrélées deux à deux. 
+
+
+```{r, include=FALSE}
+trials2<-trials1
+
+trials3<-trials2[c(which(trials2$outcome==0),which(trials2$outcome==2),which(trials2$outcome==1)[1:(85812)]),]
+table (trials3$outcome)
+
+# recodage de la variable outcome pour cart et randomforest
+
+trials3$outcome1 <- trials3$outcome
+trials3$outcome1[trials3$outcome %in% ('0')]<-"notcompleted"
+trials3$outcome1[trials3$outcome %in% ('1')]<-"terminated"
+trials3$outcome1[trials3$outcome %in% ('2')]<-"ongoing"
+table (trials3$outcome1)
+
+## création base de données une pour l'analyse, l'autre pour la prédiction
+trialbase <- sqldf("select * 
+               from trials3
+                   where outcome1 in ('notcompleted','terminated')")
+
+trialval<- sqldf("select * 
+               from trials3
+                where outcome1 in ('ongoing')")
+
+## transformation des variables qualitatives en facteur
+trialbase$type <- factor (trialbase$type)
+trialbase$phase_r <-factor(trialbase$phase_r)
+trialbase$has_dmc <- factor (trialbase$has_dmc)
+trialbase$has_expanded_access <- factor (trialbase$has_expanded_access)
+trialbase$were_results_reported <- factor (trialbase$were_results_reported)
+trialbase$outcome<- factor (trialbase$outcome)
+trialbase$outcome1<- factor (trialbase$outcome1)
+str(trialbase)
+trialbase1<-trialbase[,-1]
+str(trialbase1)
+
+## creation des partitions 
+#install.packages("caret")
+library(caret)
+set.seed(123)
+part<-createDataPartition(y=trialbase1$outcome,p = .8,list = F)
+train <- trialbase1[part,] #80% training set
+test <- trialbase1[-part,] #20% test set
+str(trialbase1)
+table(train$outcome)
+#On vérifie les proportions de la cible dans les deux sous échantillons ici on voit OK
+
+ytrain <- trialbase1$outcome[part]
+ytrain1 <- trialbase1$outcome1[part]
+ytest  <- trialbase1$outcome[-part]
+ytest1  <- trialbase1$outcome1[-part]
+table(ytrain)/sum(table(ytrain))
+table(ytrain1)/sum(table(ytrain1))
+table(ytest)/sum(table(ytest))
+table(ytest1)/sum(table(ytest1))
+
+```
+
+## Modéles statistique
+
+##1-Regression logistique simple et avec fonction step
+```{r,include=TRUE}
+reg<- glm(formula =outcome~.,data=subset(train, select=-outcome1),family=binomial)
+summary(reg) 
+```
+##Erreur de prévision modéle logistique simple
+```{r,include=TRUE}
+prevreg <- round(predict(reg,newdata=test,type="response"))
+mean(prevreg!=ytest)
+##[1] 0.1995152
+```
+
+```{r,include=TRUE}
+regstep <-step(reg,direction="both")
+summary(regstep)
+```
+##Erreur de prévision modéle logistique step
+```{r,include=TRUE}
+
+prevstep <- round(predict(regstep,newdata=test,type="response"))
+mean(prevstep!=ytest)
+##[1] 0.1995152
+
+```
+##2-Modèle Cart
+```{r,include=FALSE}
+
+detectCores()
+
+cluster <- makeCluster(detectCores() - 1) # par convention on laisse un coeur pour l'OS
+registerDoParallel(cluster)
+
+
+objControl <- trainControl(method='cv', number=10, returnResamp='none', classProbs = TRUE, summaryFunction=twoClassSummary, allowParallel = TRUE, seeds = NA)
+
+
+## ci dessus spécification du nombe de validation croisé
+
+## CART
+
+
+gridsearch <- expand.grid(cp=seq(0, 1, 0.05)) #
+tune <- train(subset(train, select=- c(outcome,outcome1)),ytrain1,method = "rpart",tuneGrid=gridsearch, trControl =objControl,metric='ROC')
+
+```
+
+## Sorties du modèle
+```{r,include=TRUE}
+tune
+plot(tune)
+tune$bestTune
+```
+
+```{r,include=TRUE}
+pred <- predict(object=tune$finalModel, subset(test, select=- c(outcome,outcome1)),type='class')## tes le modèle avec le meilleu paramétre 
+head(pred)
+
+conf.mat <- confusionMatrix(pred, ytest1)
+conf.mat$overall
+conf.mat$byClass
+
+cm.plot <- function(table_cm){
+  tablecm <- round(t(t(table_cm) / colSums(as.matrix(table_cm))*100)) # crée les pourcentages
+  tablemelt <- melt(tablecm)
+  ggplot(tablemelt, aes(Reference, Prediction)) +
+    geom_point(aes(size = value, color=value), alpha=0.8, show.legend=FALSE) +
+    geom_text(aes(label = value), color="white") +
+    scale_size(range = c(5,25)) +
+    scale_y_discrete(limits = rev(levels(tablemelt$Prediction)))+
+    theme_bw()
+}
+cm.plot(conf.mat$table)
+```
+
+##Voici les variables qui ont le plus contribué à la construction de l'arbre.
+```{r,include=TRUE}
+imp <- varImp(tune$finalModel)
+impdf <- data.frame(names = row.names(imp), imp = imp[,1])
+impdf <- impdf[order(impdf$imp, decreasing = TRUE),]
+names(impdf)[2]<-colnames(imp)[1]
+impdf[1:15,]
+```
+
+```{r,include=FALSE}
+#On peut représenter l'arbre
+## Loading required package: rpart
+rpart.plot(tune$finalModel)## ne pas afficher
+```
+
+
+```{r,include=FALSE}
+pred.rpart <- predict(object=tune$finalModel, test,type='prob')
+rocCurve.rpart   <- roc(response = ytest1, predictor = pred.rpart[, "terminated"], levels = rev(levels(ytest1)))
+```
+
+## Calcul d'aire sous la courbe ROC
+```{r,include=TRUE}
+#plot(rocCurve.rpart, print.thres = "best")
+
+rocCurve.rpart$auc
+
+
+```
+
+## 3- Randomforest 
+```{r,include=FALSE}
+gridsearch1 <- expand.grid(mtry = seq(30,200,50))
+tune1 <- train(subset(train, select=- c(outcome,outcome1)),ytrain1,method = "rf",tuneGrid=gridsearch1, trControl =objControl,metric='ROC')
+```
+
+## Sorties du modèle
+```{r,include=TRUE}
+tune1
+plot(tune1)
+tune1$bestTune
+```
+
+```{r,include=FALSE}
+pred1 <- predict(object=tune1$finalModel, subset(test, select=- c(outcome,outcome1)),type='class')
+conf.mat1 <- confusionMatrix(pred1, ytest1)
+```
+
+## matrice de confusion et variables qui ont le plus d'importance
+```{r,include=TRUE}
+cm.plot(conf.mat1$table)
+
+conf.mat1$overall
+conf.mat1$byClass
+
+imp1 <- varImp(tune1$finalModel)
+impdf1 <- data.frame(names = row.names(imp1), imp1 = imp1[,1])
+impdf1 <- impdf1[order(impdf1$imp1, decreasing = TRUE),]
+names(impdf1)[2]<-colnames(imp1)[1]
+impdf1[1:15,]
+```
+
+```{r,include=FALSE}
+
+pred.rf <- predict(object=tune1$finalModel, subset(test, select=- c(outcome,outcome1)),type='prob')
+rocCurve.rf <- roc(response = ytest1, predictor = pred.rf[, "notcompleted"])
+```
+
+## Calcul d'aire sous la courbe ROC
+```{r,include=TRUE}
+
+rocCurve.rf$auc
+
+
+```
+## 4- Regression glmnet
+```{r,include=FALSE}
+
+##changement de la matrice pour avoir une matrice où les variables quali sont #transformé
+
+str(ytrain)
+str(ytrain1)
+x_train<-subset(train, select=- c(type,has_dmc,has_expanded_access,were_results_reported,phase_r,outcome,outcome1))
+x_train1<-model.matrix( ~ .-1,train[,c(2,4,9,11,12)])
+x_train2<-cbind(x_train,x_train1)
+str(train)
+
+x_test<-subset(test, select=- c(type,has_dmc,has_expanded_access,were_results_reported,phase_r,outcome,outcome1))
+x_test1<-model.matrix( ~ .-1,test[,c(2,4,9,11,12)])
+x_test2<-cbind(x_test,x_test1)
+
+##gridsearch <- expand.grid(alpha=c(0, .5, 1), lambda=c(.1, 1, 10))
+gridsearch2 <- expand.grid(alpha=seq(0, 1, 0.1), lambda=seq(0, 5, 0.1))
+
+tune2 <- train(as.matrix(x_train2),ytrain1,method = "glmnet",tuneGrid=gridsearch2, family='binomial', trControl =objControl,metric='ROC')
+
+pred2 <- predict(object=tune2, as.matrix(x_test2),type='raw')
+```
+
+## Sorties du modèle
+```{r,include=TRUE}
+tune2
+plot(tune2)
+tune2$bestTune
+
+```
+
+## matrice de confusion et variables qui ont le plus d'importance
+```{r,include=TRUE}
+conf.mat2 <- confusionMatrix(pred2, ytest1)
+
+cm.plot(conf.mat2$table)
+
+conf.mat2$overall
+conf.mat2$byClass
+```
+
+```{r,include=FALSE}
+pred.elasticnet <- predict(object=tune2, as.matrix(x_test2),type='prob')
+rocCurve.elasticnet   <- roc(response = ytest1, predictor = pred.elasticnet[, "notcompleted"])
+```
+
+## Calcul d'aire sous la courbe ROC
+```{r,include=TRUE}
+rocCurve.elasticnet$auc
+
+```
+## 5- Modèle xgboost
+```{r,include=FALSE}
+
+objControl1 <- trainControl(method='cv', number=3, returnResamp='none', classProbs = TRUE, summaryFunction=twoClassSummary, allowParallel = TRUE, seeds = NA)
+
+#gridsearch3 <- expand.grid(eta = c(0.01, 0.1, 0.3),nrounds = c(50, 100, 150),max_depth = c(20, 25, 30),
+#                            min_child_weight = c(1, 5, 10),colsample_bytree = #c(0.75, 1, 1.25),gamma = c(0.25, 0.5, 1),
+#                           subsample = c(0.25, 0.5, 1)) trop long avec le test #de 3 paramètres on reduit à 2
+
+gridsearch3 <- expand.grid(eta = c(0.1, 0.3),nrounds = c(100, 150),max_depth = c(25, 30), min_child_weight = c(5, 10),colsample_bytree = c(1, 1.25),gamma = c( 0.5, 1),subsample = c(0.5, 1))
+
+detectCores()
+
+cluster <- makeCluster(detectCores() - 1) # par convention on laisse un coeur pour l'OS
+registerDoParallel(cluster)
+
+cl = makeCluster(2)
+registerDoParallel(cl)
+set.seed(1971)
+tune3 <- train(outcome1~., 
+                        data = subset(train, select=- c(outcome)) ,
+                        method = "xgbTree",
+                        tuneGrid = gridsearch3,
+                        trControl = objControl1)
+
+
+stopCluster(cl)
+remove(cl)
+registerDoSEQ()
+```
+## Sorties du modèle
+```{r,include=TRUE}
+tune3
+plot(tune3)
+tune3$bestTune
+
+```
+```{r,include=FALSE}
+# PRED
+predxgb <- predict(tune3, subset(test, select=- c(outcome)))
+predxgb.prob <- predict(tune3, subset(test, select=- c(outcome)), type="prob")
+```
+
+
+```{r,include=TRUE}
+conf.mat3 <- confusionMatrix(predxgb, ytest1)
+
+cm.plot(conf.mat3$table)
+
+conf.mat3$overall
+conf.mat3$byClass
+
+
+rocCurve.xgboost   <- roc(response = ytest1, predictor = predxgb.prob [, "notcompleted"])
+```
+
+## Calcul d'aire sous la courbe ROC
+```{r,include=TRUE}
+
+rocCurve.xgboost$auc
+ERREUR_XGBOOST<-(conf.mat3[1,2]+conf.mat3[2,1])/nrow(test) 
+```
+
+## 6-Réseaux de neurones
+
+```{r,include=FALSE}
+# Grille des paramètres
+gridsearch4 <- expand.grid(.size=c(10,15,20), .decay=c(0.05,0.1,0.5))
+
+
+objControl2 <- trainControl(method='cv', number=6, returnResamp='none', classProbs = TRUE, summaryFunction=twoClassSummary, allowParallel = TRUE, seeds = NA)
+
+
+
+cl = makeCluster(3)
+registerDoParallel(cl)
+
+#Neural Model
+tune4<- train(outcome1 ~ .,
+                   data=subset(train, select=- c(outcome)),
+                   method='nnet',
+                   maxit = 100,#1000
+                   linout = FALSE,
+                   trControl = objControl2,
+                   tuneGrid = gridsearch4,
+                   metric = "ROC",
+                   allowParallel = TRUE)
+
+stopCluster(cl)
+remove(cl)
+registerDoSEQ()
+```
+
+## Sorties du modèle
+```{r,include=TRUE}
+tune4
+plot(tune4)
+tune4$bestTune
+
+```
+
+```{r,include=FALSE}
+# PRED
+predneur <- predict(tune4, subset(test, select=- c(outcome)))
+predneur.prob <- predict(tune4, subset(test, select=- c(outcome)), type="prob")
+```
+
+## matrice de confusion et variables qui ont le plus d'importance
+
+```{r,include=TRUE}
+conf.mat4 <- confusionMatrix(predneur, ytest1)
+
+cm.plot(conf.mat4$table)
+
+conf.mat4$overall
+conf.mat4$byClass
+
+
+rocCurve.neur   <- roc(response = ytest1, predictor = predneur.prob [, "notcompleted"])
+```
+## Calcul d'aire sous la courbe ROC
+
+```{r,include=TRUE}
+rocCurve.neur$auc
+```
+
+```{r, echo=FALSE}
+## analyse des courbes ROC
+plot(rocCurve.rpart,col=1)
+abline(v=1)
+plot(rocCurve.rf,col=2,add=TRUE)
+plot(rocCurve.elasticnet,col=3,add=TRUE)
+plot(rocCurve.elasticnet,col=3,add=TRUE)
+plot(rocCurve.xgboost ,col=4,add=TRUE)
+plot(rocCurve.neur ,col=5,add=TRUE)
+legend(0, 0.7, c('rpart','forest','elasticnet','xgboost','reseaux neurones'), 1:5)
+```
