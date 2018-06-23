@@ -1,0 +1,19 @@
+Random Forest 
+
+85813 samples
+   15 predictor
+    2 classes: 'notcompleted', 'terminated' 
+
+No pre-processing
+Resampling: Cross-Validated (8 fold) 
+Summary of sample sizes: 75087, 75086, 75085, 75087, 75087, 75087, ... 
+Resampling results across tuning parameters:
+
+  mtry  ROC        Sens       Spec     
+   30   0.8698780  0.5162279  0.9722797
+   80   0.8694640  0.5158783  0.9721340
+  130   0.8698401  0.5173344  0.9722651
+  180   0.8695392  0.5172761  0.9720758
+
+ROC was used to select the optimal model using the largest value.
+The final value used for the model was mtry = 30.
