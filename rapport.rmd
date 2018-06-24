@@ -5,11 +5,8 @@ date: "19 juin 2018"
 output: html_document
 ---
 
-```{r global_options, include=FALSE}
-## Definition des options globales
-knitr::opts_chunk$set(include=TRUE, echo=FALSE,comment = "",fig.align = 'center',fig.width=9, fig.height=6,message=FALSE)
-#warning=FALSE
-
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
 ```
 ## Analyse des données 
 ## 1- Corrélation
@@ -52,6 +49,7 @@ On voit ici que nos variables quantitatives ne sont pas corrélées deux à deux.
 
 ```{r, include=FALSE}
 trials2<-trials1
+#table(trials2$outcome)
 
 trials3<-trials2[c(which(trials2$outcome==0),which(trials2$outcome==2),which(trials2$outcome==1)[1:(85812)]),]
 table (trials3$outcome)
@@ -81,6 +79,8 @@ trialbase$has_expanded_access <- factor (trialbase$has_expanded_access)
 trialbase$were_results_reported <- factor (trialbase$were_results_reported)
 trialbase$outcome<- factor (trialbase$outcome)
 trialbase$outcome1<- factor (trialbase$outcome1)
+table(trialbase$outcome)
+plot(trialbase$outcome)
 str(trialbase)
 trialbase1<-trialbase[,-1]
 str(trialbase1)
@@ -117,6 +117,7 @@ summary(reg)
 ##Erreur de prévision modéle logistique simple
 ```{r,include=TRUE}
 prevreg <- round(predict(reg,newdata=test,type="response"))
+table (prevreg)
 mean(prevreg!=ytest)
 ##[1] 0.1995152
 ```
@@ -129,6 +130,7 @@ summary(regstep)
 ```{r,include=TRUE}
 
 prevstep <- round(predict(regstep,newdata=test,type="response"))
+table (prevstep)
 mean(prevstep!=ytest)
 ##[1] 0.1995152
 
@@ -164,7 +166,7 @@ tune$bestTune
 
 ```{r,include=TRUE}
 pred <- predict(object=tune$finalModel, subset(test, select=- c(outcome,outcome1)),type='class')## tes le modèle avec le meilleu paramétre 
-head(pred)
+table(pred)
 
 conf.mat <- confusionMatrix(pred, ytest1)
 conf.mat$overall
@@ -200,7 +202,7 @@ rpart.plot(tune$finalModel)## ne pas afficher
 
 
 ```{r,include=FALSE}
-pred.rpart <- predict(object=tune$finalModel, test,type='prob')
+pred.rpart <- predict(object=tune$finalModel, subset(test, select=- c(outcome,outcome1)),type='prob')
 rocCurve.rpart   <- roc(response = ytest1, predictor = pred.rpart[, "terminated"], levels = rev(levels(ytest1)))
 ```
 
@@ -210,13 +212,33 @@ rocCurve.rpart   <- roc(response = ytest1, predictor = pred.rpart[, "terminated"
 
 rocCurve.rpart$auc
 
+calcul_erreur<- (conf.mat$table[1,2]+conf.mat$table[2,1])/nrow(test)
+
+FNR<-(conf.mat$table[2,1])/(conf.mat$table[2,1]+conf.mat$table[1,1])##taux faux #negatif
+
+FPR<-(conf.mat$table[1,2])/(conf.mat$table[1,2]+ conf.mat$table[2,2])##taux faux #positif
+c('Erreur ',calcul_erreur) 
+c('Taux Faux Negatifs ' ,FNR) 
+c('Taux Faux Postifs ',FPR)
 
 ```
 
 ## 3- Randomforest 
 ```{r,include=FALSE}
-gridsearch1 <- expand.grid(mtry = seq(30,200,50))
-tune1 <- train(subset(train, select=- c(outcome,outcome1)),ytrain1,method = "rf",tuneGrid=gridsearch1, trControl =objControl,metric='ROC')
+detectCores()
+
+cluster <- makeCluster(detectCores() - 1) # par convention on laisse un coeur pour l'OS
+registerDoParallel(cluster)
+
+gridsearch1 <- expand.grid(mtry = seq(30,220,50))
+objControlrf <- trainControl(method='cv', number=8, returnResamp='none', classProbs = TRUE, summaryFunction=twoClassSummary, allowParallel = TRUE, seeds = NA)
+
+tune1 <- train(subset(train, select=- c(outcome,outcome1)),ytrain1,method = "rf",tuneGrid=gridsearch1, trControl =objControlrf,metric='ROC')
+
+stopCluster(cluster)
+remove(cluster)
+registerDoSEQ()
+
 ```
 
 ## Sorties du modèle
@@ -228,6 +250,7 @@ tune1$bestTune
 
 ```{r,include=FALSE}
 pred1 <- predict(object=tune1$finalModel, subset(test, select=- c(outcome,outcome1)),type='class')
+table(pred1)
 conf.mat1 <- confusionMatrix(pred1, ytest1)
 ```
 
@@ -256,6 +279,15 @@ rocCurve.rf <- roc(response = ytest1, predictor = pred.rf[, "notcompleted"])
 
 rocCurve.rf$auc
 
+calcul_erreur1<- (conf.mat1$table[1,2]+conf.mat1$table[2,1])/nrow(test)
+
+FNR1<-(conf.mat1$table[2,1])/(conf.mat1$table[2,1]+conf.mat1$table[1,1])##taux faux #negatif
+
+FPR1<-(conf.mat1$table[1,2])/(conf.mat1$table[1,2]+ conf.mat1$table[2,2])##taux faux #positif
+c('Erreur ',calcul_erreur1) 
+c('Taux Faux Negatifs ' ,FNR1) 
+c('Taux Faux Postifs ',FPR1)
+
 
 ```
 ## 4- Regression glmnet
@@ -280,6 +312,7 @@ gridsearch2 <- expand.grid(alpha=seq(0, 1, 0.1), lambda=seq(0, 5, 0.1))
 tune2 <- train(as.matrix(x_train2),ytrain1,method = "glmnet",tuneGrid=gridsearch2, family='binomial', trControl =objControl,metric='ROC')
 
 pred2 <- predict(object=tune2, as.matrix(x_test2),type='raw')
+table(pred2)
 ```
 
 ## Sorties du modèle
@@ -298,6 +331,12 @@ cm.plot(conf.mat2$table)
 
 conf.mat2$overall
 conf.mat2$byClass
+
+imp2 <- varImp(tune2$finalModel)
+impdf2 <- data.frame(names = row.names(imp2), imp2 = imp2[,1])
+impdf2 <- impdf2[order(impdf2$imp2, decreasing = TRUE),]
+names(impdf2)[2]<-colnames(imp2)[1]
+impdf2[1:15,]
 ```
 
 ```{r,include=FALSE}
@@ -308,6 +347,15 @@ rocCurve.elasticnet   <- roc(response = ytest1, predictor = pred.elasticnet[, "n
 ## Calcul d'aire sous la courbe ROC
 ```{r,include=TRUE}
 rocCurve.elasticnet$auc
+
+calcul_erreur2<- (conf.mat2$table[1,2]+conf.mat2$table[2,1])/nrow(test)
+
+FNR2<-(conf.mat2$table[2,1])/(conf.mat2$table[2,1]+conf.mat2$table[1,1])##taux faux #negatif
+
+FPR2<-(conf.mat2$table[1,2])/(conf.mat2$table[1,2]+ conf.mat2$table[2,2])##taux #faux positif
+c('Erreur ',calcul_erreur2) 
+c('Taux Faux Negatifs ' ,FNR2) 
+c('Taux Faux Postifs ',FPR2)
 
 ```
 ## 5- Modèle xgboost
@@ -349,8 +397,10 @@ tune3$bestTune
 ```
 ```{r,include=FALSE}
 # PRED
-predxgb <- predict(tune3, subset(test, select=- c(outcome)))
-predxgb.prob <- predict(tune3, subset(test, select=- c(outcome)), type="prob")
+predxgb <- predict(tune3, subset(test, select=- c(outcome,outcome1)))
+predxgb.prob <- predict(tune3, subset(test, select=- c(outcome,outcome1)), type="prob")
+
+table(predxgb)
 ```
 
 
@@ -365,12 +415,20 @@ conf.mat3$byClass
 
 rocCurve.xgboost   <- roc(response = ytest1, predictor = predxgb.prob [, "notcompleted"])
 ```
-
 ## Calcul d'aire sous la courbe ROC
 ```{r,include=TRUE}
 
 rocCurve.xgboost$auc
-ERREUR_XGBOOST<-(conf.mat3[1,2]+conf.mat3[2,1])/nrow(test) 
+
+calcul_erreur3<- (conf.mat3$table[1,2]+conf.mat3$table[2,1])/nrow(test)
+
+FNR3<-(conf.mat3$table[2,1])/(conf.mat3$table[2,1]+conf.mat3$table[1,1])##taux #faux negatif
+
+FPR3<-(conf.mat3$table[1,2])/(conf.mat3$table[1,2]+ conf.mat3$table[2,2])##taux #faux positif
+c('Erreur ',calcul_erreur3) 
+c('Taux Faux Negatifs ' ,FNR3) 
+c('Taux Faux Postifs ',FPR3)
+ 
 ```
 
 ## 6-Réseaux de neurones
@@ -413,8 +471,9 @@ tune4$bestTune
 
 ```{r,include=FALSE}
 # PRED
-predneur <- predict(tune4, subset(test, select=- c(outcome)))
-predneur.prob <- predict(tune4, subset(test, select=- c(outcome)), type="prob")
+predneur <- predict(tune4, subset(test, select=- c(outcome,outcome1)))
+table(predneur)
+predneur.prob <- predict(tune4, subset(test, select=- c(outcome,outcome1)), type="prob")
 ```
 
 ## matrice de confusion et variables qui ont le plus d'importance
@@ -427,6 +486,12 @@ cm.plot(conf.mat4$table)
 conf.mat4$overall
 conf.mat4$byClass
 
+imp4 <- varImp(tune4$finalModel)
+impdf4 <- data.frame(names = row.names(imp4), imp4 = imp4[,1])
+impdf4 <- impdf4[order(impdf4$imp4, decreasing = TRUE),]
+names(impdf4)[2]<-colnames(imp4)[1]
+impdf4[1:15,]
+
 
 rocCurve.neur   <- roc(response = ytest1, predictor = predneur.prob [, "notcompleted"])
 ```
@@ -434,16 +499,25 @@ rocCurve.neur   <- roc(response = ytest1, predictor = predneur.prob [, "notcompl
 
 ```{r,include=TRUE}
 rocCurve.neur$auc
+
+calcul_erreur4<- (conf.mat4$table[1,2]+conf.mat4$table[2,1])/nrow(test)
+
+FNR4<-(conf.mat4$table[2,1])/(conf.mat4$table[2,1]+conf.mat4$table[1,1])##taux #faux negatif
+
+FPR4<-(conf.mat4$table[1,2])/(conf.mat4$table[1,2]+ conf.mat4$table[2,2])##taux #faux positif
+c('Erreur ',calcul_erreur3) 
+c('Taux Faux Negatifs ' ,FNR3) 
+c('Taux Faux Postifs ',FPR3)
 ```
 
-```{r, echo=FALSE}
-## analyse des courbes ROC
+```{r pressure, echo=FALSE, include=TRUE}
+##analyse des courbes ROC
 plot(rocCurve.rpart,col=1)
 abline(v=1)
 plot(rocCurve.rf,col=2,add=TRUE)
 plot(rocCurve.elasticnet,col=3,add=TRUE)
-plot(rocCurve.elasticnet,col=3,add=TRUE)
 plot(rocCurve.xgboost ,col=4,add=TRUE)
 plot(rocCurve.neur ,col=5,add=TRUE)
-legend(0, 0.7, c('rpart','forest','elasticnet','xgboost','reseaux neurones'), 1:5)
+legend(0, 0.7, c('rpart','forest','elasticnet','xgboost','neurones'), 1:5)
 ```
+
