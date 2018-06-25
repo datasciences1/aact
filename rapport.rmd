@@ -120,6 +120,14 @@ prevreg <- round(predict(reg,newdata=test,type="response"))
 table (prevreg)
 mean(prevreg!=ytest)
 ##[1] 0.1995152
+
+prevreg.prob <- predict(reg,newdata=test,type="response")
+
+rocCurve.glm  <- roc(response = ytest, predictor = prevreg.prob, levels = rev(levels(ytest)))
+
+rocCurve.glm$auc
+
+
 ```
 
 ```{r,include=TRUE}
@@ -514,10 +522,11 @@ c('Taux Faux Postifs ',FPR3)
 ##analyse des courbes ROC
 plot(rocCurve.rpart,col=1)
 abline(v=1)
-plot(rocCurve.rf,col=2,add=TRUE)
-plot(rocCurve.elasticnet,col=3,add=TRUE)
-plot(rocCurve.xgboost ,col=4,add=TRUE)
-plot(rocCurve.neur ,col=5,add=TRUE)
-legend(0, 0.7, c('rpart','forest','elasticnet','xgboost','neurones'), 1:5)
+plot(rocCurve.glm,col=2,add=TRUE)
+plot(rocCurve.rf,col=3,add=TRUE)
+plot(rocCurve.elasticnet,col=4,add=TRUE)
+plot(rocCurve.xgboost ,col=5,add=TRUE)
+plot(rocCurve.neur ,col=6,add=TRUE)
+legend(0, 0.8, c('rpart','glm','forest','elasticnet','xgboost','neurones'), 1:6)
 ```
 
